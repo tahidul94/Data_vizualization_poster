@@ -1,0 +1,567 @@
+---
+title: "data Processing and cleaning"
+output: html_document
+date: "2024-03-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r , echo=FALSE, warning=FALSE, message=FALSE}
+
+dataDrive <- "/Users/mdtahidulislam/Desktop/Data Visu/Data-for-poster/details"
+
+files <- list.files(path = dataDrive, pattern = "*.csv", full.names = TRUE)
+
+strome_df <- do.call(rbind, lapply(files, read.csv, stringsAsFactors = FALSE))
+  strome_df[strome_df == ''] <- NA
+head(strome_df)
+```
+
+## December, January, February are marked as Winter.
+## March, April, May are marked as Spring.
+## June, July, August are marked as Summer.
+## September, October, November are marked as Fall.
+```{r}
+library(dplyr)
+#write.csv(ccc, file ="ccc1.csv")
+strome_df <- strome_df %>%
+  mutate(Season = case_when(
+    MONTH_NAME %in% c('December', 'January', 'February') ~ 'Winter',
+    MONTH_NAME %in% c('March', 'April', 'May') ~ 'Spring',
+    MONTH_NAME %in% c('June', 'July', 'August') ~ 'Summer',
+    MONTH_NAME %in% c('September', 'October', 'November') ~ 'Fall',
+    TRUE ~ NA_character_ # handles unexpected cases
+  ))
+
+aaa <- head(strome_df,100)
+
+
+#write.csv(aaa, "aaa.csv", row.names=FALSE)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Assuming your dataframe is named strome_df
+
+# Step 1: Find the top 5 event types
+top_event_types <- strome_df %>%
+  count(EVENT_TYPE) %>%
+  top_n(5, n) %>%
+  pull(EVENT_TYPE)
+
+# Step 2: Filter your dataset for only the top 5 event types
+filtered_df <- strome_df %>%
+  filter(EVENT_TYPE %in% top_event_types)
+
+# Step 3: Create a visualization
+ggplot(filtered_df, aes(x = EVENT_TYPE, fill = Season)) +
+  geom_bar(position = "dodge") +
+  theme_minimal() +
+  labs(title = "Frequency of Top 5 Event Types by Season",
+       x = "Event Type",
+       y = "Frequency") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# This code creates a bar plot with the event types on the x-axis and their frequencies on the y-axis.
+# The bars are filled with different colors representing the seasons.
+
+
+ggsave('Top_5_Event_by_Season.png', height=4, width = 7, dpi=100)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+
+# Assuming your dataframe is strome_df and it has the columns: STATE, EVENT_TYPE, and Season
+
+# Step 1: Identify the top 5 event types
+top_event_types <- strome_df %>%
+  count(EVENT_TYPE) %>%
+  top_n(5, n) %>%
+  pull(EVENT_TYPE)
+
+# Step 2: Filter the dataset for only the top 5 event types
+filtered_df <- strome_df %>%
+  filter(EVENT_TYPE %in% top_event_types)
+
+# Step 3 & 4: Count occurrences by state and identify the top 10 states
+top_states <- filtered_df %>%
+  count(STATE) %>%
+  top_n(10, n) %>%
+  pull(STATE)
+
+# Filter the dataset to include only these top 10 states
+filtered_df_top_states <- filtered_df %>%
+  filter(STATE %in% top_states)
+
+summary_df <- filtered_df_top_states %>%
+  group_by(STATE, EVENT_TYPE) %>%
+  summarise(Frequency = n(), .groups = 'drop')
+
+# Use pivot_longer to prepare data for heatmap
+long_data <- summary_df %>%
+  pivot_longer(cols = Frequency, names_to = "Variable", values_to = "Value")
+
+# Plotting the heatmap
+ggplot(long_data, aes(x = EVENT_TYPE, y = STATE, fill = Value)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "red") +
+  labs(title = "Top 5 Event Types in Top 10 States", x = "Event Type", y = "State", fill = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave('Top_5_Event_Top_10_States.png', height=4, width = 7, dpi=100)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(maps)
+
+# Convert state names in strome_df to lowercase for matching
+strome_df <- strome_df %>%
+  mutate(STATE = tolower(STATE))
+
+# Filter out non-states entries if needed
+strome_df <- strome_df %>%
+  filter(STATE %in% map_data("state")$region)
+
+# Aggregating event count by state, assuming top_event_types is already defined
+state_event_counts <- strome_df %>%
+  filter(EVENT_TYPE %in% top_event_types) %>%
+  group_by(STATE) %>%
+  summarize(Total_Events = n(), .groups = 'drop')
+
+# Getting US state map data
+us_map <- map_data("state")
+
+# Merging the event counts with the map data
+map_data_merged <- merge(us_map, state_event_counts, by.x = "region", by.y = "STATE", all.x = TRUE)
+
+# Creating the map
+ggplot(data = map_data_merged, aes(x = long, y = lat, group = group, fill = Total_Events)) +
+  geom_polygon(color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", na.value = "grey50", name = "Event Count") +
+  labs(title = "Frequency of Top 5 Event Types by State") +
+  theme_void()
+
+ggsave('map_of_Frequency_of_Top_5_Event_Types_by_State.png', height=4, width = 7, dpi=100)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(maps)
+library(tidyr)
+
+# Load strome_df and identify top_event_types as shown previously...
+
+# Ensure state names match between your dataset and map data
+strome_df <- strome_df %>%
+  mutate(STATE = tolower(STATE))
+
+# Filter out non-state entries if needed
+states_map_data <- map_data("state")
+strome_df <- strome_df %>%
+  filter(STATE %in% states_map_data$region)
+
+# Aggregate event count by state and event type
+state_event_counts <- strome_df %>%
+  group_by(STATE, EVENT_TYPE) %>%
+  summarize(Total_Events = n(), .groups = 'drop') %>%
+  filter(EVENT_TYPE %in% top_events$EVENT_TYPE) # Filter for top event types
+
+# Ensure map_data_merged contains the "EVENT_TYPE" column for faceting
+map_data_merged <- merge(states_map_data, state_event_counts, by.x = "region", by.y = "STATE", all.x = TRUE)
+
+# Use complete to create all combinations of region and EVENT_TYPE, filling with 0 for Total_Events
+complete_data <- complete(map_data_merged, region, EVENT_TYPE, fill = list(Total_Events = 0))
+
+# Now we can create a faceted map
+ggplot(data = complete_data, aes(x = long, y = lat, group = group, fill = Total_Events)) +
+  geom_polygon(color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", na.value = "grey50", name = "Event Count") +
+  labs(title = "Frequency of Top 5 Event Types by State") +
+  theme_void() +
+  facet_wrap(~ EVENT_TYPE)
+
+# Save the plot
+ggsave('map_faceted_by_event_type.png', height = 8, width = 14, dpi = 100)
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+event_season_freq <- strome_df %>%
+  count(EVENT_TYPE, Season) %>%
+  filter(EVENT_TYPE %in% (strome_df %>% count(EVENT_TYPE) %>%
+                            top_n(5, n) %>%
+                            pull(EVENT_TYPE)))
+
+# Create the bar chart
+ggplot(event_season_freq, aes(x = Season, y = n, fill = EVENT_TYPE)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(title = "Frequency of Top Event Types by Season",
+       x = "Season",
+       y = "Frequency",
+       fill = "Event Type") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Replace '/path/to/your/aaa.csv' with the actual path to your CSV file.
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# For box plot by State
+event_state_counts <- strome_df %>%
+  group_by(STATE) %>%
+  summarise(Event_Count = n())
+
+ggplot(event_state_counts, aes(x = STATE, y = Event_Count)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Distribution of Event Counts by State",
+       x = "State",
+       y = "Count of Events") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# For box plot by Season
+event_season_counts <- strome_df %>%
+  group_by(Season) %>%
+  summarise(Event_Count = n())
+
+ggplot(event_season_counts, aes(x = Season, y = Event_Count)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Distribution of Event Counts by Season",
+       x = "Season",
+       y = "Count of Events")
+
+
+```
+```{r}
+library(dplyr)
+library(ggplot2)
+library(maps)
+
+# Assuming strome_df is already loaded and contains the necessary columns
+
+# Filter for Summer season events only
+summer_events <- strome_df %>%
+  filter(Season == "Summer")
+
+# Aggregate event count by state for the Summer season
+summer_state_events <- summer_events %>%
+  group_by(STATE) %>%
+  summarize(Total_Events = n(), .groups = 'drop')
+
+# Ensure state names match between your dataset and map data, converting to lowercase for consistency
+summer_state_events$STATE <- tolower(summer_state_events$STATE)
+
+# Merge with US state map data
+us_map <- map_data("state")
+summer_map_data <- merge(us_map, summer_state_events, by.x = "region", by.y = "STATE", all.x = TRUE)
+
+# Create the map
+ggplot() +
+  geom_polygon(data = summer_map_data, aes(x = long, y = lat, group = group, fill = Total_Events),
+               color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "red", na.value = "grey50", name = "Event Count") +
+  labs(title = "Total Event Counts by State - Summer Season", x = "", y = "") +
+  theme_void() +
+  theme(legend.position = "right")
+
+ggsave('Event_by State_Summer_Season.png', height = 8, width = 14, dpi = 100)
+
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(maps)
+
+# Filter for Fall season events only
+fall_events <- strome_df %>%
+  filter(Season == "Fall")
+
+# Aggregate event count by state for the Fall season
+fall_state_events <- fall_events %>%
+  group_by(STATE) %>%
+  summarize(Total_Events = n(), .groups = 'drop')
+
+# Ensure state names match between your dataset and map data, converting to lowercase for consistency
+fall_state_events$STATE <- tolower(fall_state_events$STATE)
+
+# Merge with US state map data
+us_map <- map_data("state")
+fall_map_data <- merge(us_map, fall_state_events, by.x = "region", by.y = "STATE", all.x = TRUE)
+
+# Create the map
+ggplot() +
+  geom_polygon(data = fall_map_data, aes(x = long, y = lat, group = group, fill = Total_Events),
+               color = "white") +
+  scale_fill_gradient(low = "lightyellow", high = "darkorange", na.value = "grey50", name = "Event Count") +
+  labs(title = "Total Event Counts by State - Fall Season", x = "", y = "") +
+  theme_void() +
+  theme(legend.position = "right")
+
+# Note: Adjust column names and paths as necessary to match your dataset and setup.
+
+ggsave('Event_by State_fall_Season.png', height = 8, width = 14, dpi = 100)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(maps)
+
+# Filter for Winter season events only
+winter_events <- strome_df %>%
+  filter(Season == "Winter")
+
+# Aggregate event count by state for the Winter season
+winter_state_events <- winter_events %>%
+  group_by(STATE) %>%
+  summarize(Total_Events = n(), .groups = 'drop')
+
+# Ensure state names match between your dataset and map data, converting to lowercase for consistency
+winter_state_events$STATE <- tolower(winter_state_events$STATE)
+
+# Merge with US state map data
+us_map <- map_data("state")
+winter_map_data <- merge(us_map, winter_state_events, by.x = "region", by.y = "STATE", all.x = TRUE)
+
+# Create the map
+ggplot() +
+  geom_polygon(data = winter_map_data, aes(x = long, y = lat, group = group, fill = Total_Events),
+               color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "blue", na.value = "grey50", name = "Event Count") +
+  labs(title = "Total Event Counts by State - Winter Season", x = "", y = "") +
+  theme_void() +
+  theme(legend.position = "right")
+
+# Note: Adjust column names and paths as necessary to match your dataset and setup.
+
+
+ggsave('Event_by State_winter_Season.png', height = 8, width = 14, dpi = 100)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(maps)
+
+# Filter for Spring season events only
+spring_events <- strome_df %>%
+  filter(Season == "Spring")
+
+# Aggregate event count by state for the Spring season
+spring_state_events <- spring_events %>%
+  group_by(STATE) %>%
+  summarize(Total_Events = n(), .groups = 'drop')
+
+# Ensure state names match between your dataset and map data, converting to lowercase for consistency
+spring_state_events$STATE <- tolower(spring_state_events$STATE)
+
+# Merge with US state map data
+us_map <- map_data("state")
+spring_map_data <- merge(us_map, spring_state_events, by.x = "region", by.y = "STATE", all.x = TRUE)
+
+# Create the map
+ggplot() +
+  geom_polygon(data = spring_map_data, aes(x = long, y = lat, group = group, fill = Total_Events),
+               color = "white") +
+  scale_fill_gradient(low = "lightgreen", high = "darkgreen", na.value = "grey50", name = "Event Count") +
+  labs(title = "Total Event Counts by State - Spring Season", x = "", y = "") +
+  theme_void() +
+  theme(legend.position = "right")
+
+ggsave('Event_by State_spring_Season.png', height = 8, width = 14, dpi = 100)
+
+```
+
+```{r}
+library(dplyr)
+
+# Calculate the total number of events by state
+total_events_by_state <- strome_df %>%
+  group_by(STATE) %>%
+  summarise(Total_Events = n()) %>%
+  arrange(desc(Total_Events)) %>%
+  top_n(10, Total_Events)
+
+total_events_by_state
+```
+
+```{r}
+library(dplyr)
+
+# Filter for Summer season events
+summer_events <- strome_df %>%
+  filter(Season == "Summer")
+
+# Calculate the top 5 event types by frequency
+top_5_summer_events <- summer_events %>%
+  count(EVENT_TYPE) %>%
+  arrange(desc(n)) %>%
+  top_n(5, n)
+
+top_5_summer_events
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(maps)
+
+
+
+# Step 1: Group by state and event type, then count occurrences
+state_event_counts <- strome_df %>%
+  group_by(STATE, EVENT_TYPE) %>%
+  summarise(Total_Events = n(), .groups = 'drop')
+
+# Step 2: For each state, identify the event type with the maximum count
+most_common_event_by_state <- state_event_counts %>%
+  group_by(STATE) %>%
+  slice(which.max(Total_Events)) %>%
+  ungroup()
+
+# Ensure state names are in lowercase to match map data
+most_common_event_by_state$STATE <- tolower(most_common_event_by_state$STATE)
+
+# Step 3: Merge with US state map data
+us_map <- map_data("state")
+map_data_merged <- merge(us_map, most_common_event_by_state, by.x = "region", by.y = "STATE", all.x = TRUE)
+
+# Step 4: Plot the map
+ggplot() +
+  geom_polygon(data = map_data_merged, aes(x = long, y = lat, group = group, fill = EVENT_TYPE), color = "white") +
+  scale_fill_discrete(name = "Most Common Event") +
+  labs(title = "Most Common Event by State", x = "", y = "") +
+  theme_void() +
+  theme(legend.position = "bottom")
+
+# Note: Adjust the code as necessary to fit the structure of your data
+
+ggsave('most-common-event-by-.jpeg', height=4, width = 7, dpi=1200)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(maps)
+
+# Assuming strome_df is already filtered for the Summer season and contains data for Texas
+
+# Step 1: Group by state and event type, then count occurrences for Texas
+texas_event_counts <- strome_df %>%
+  filter(STATE == "TEXAS") %>%  # Ensure this matches the state naming convention in your dataset
+  group_by(EVENT_TYPE) %>%
+  summarise(Total_Events = n(), .groups = 'drop')
+
+# Step 2: Identify the event type with the maximum count in Texas
+most_common_event_texas <- texas_event_counts %>%
+  slice(which.max(Total_Events)) %>%
+  ungroup()
+
+# Ensure state names are in lowercase to match map data (only necessary if joining with map data)
+most_common_event_texas$STATE <- tolower(most_common_event_texas$STATE)
+
+# Step 3: Get map data for Texas
+texas_map <- map_data("state", region = "texas")
+
+most_common_event_color <- "blue" # Replace with appropriate color for the event
+
+# Now plot the map for Texas
+ggplot(data = texas_map, aes(x = long, y = lat, group = group)) +
+  geom_polygon(fill = most_common_event_color, color = "white") +
+  coord_fixed(1.3) +
+  labs(title = "Most Common Summer Event in Texas") +
+  theme_void()
+
+# If you want to save the plot
+#ggsave('most-common-event-texas.jpeg', height=4, width = 7, dpi=1200)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(maps)
+library(sf) # for working with spatial data
+
+# Filter for events in Texas
+texas_events <- strome_df %>%
+  filter(STATE_FIPS == 48 | STATE == "texas") # Adjust depending on how your state data is formatted
+
+texas_events
+# Group by county and event type, then count occurrences
+county_event_counts <- texas_events %>%
+  group_by(CZ_NAME, EVENT_TYPE) %>%
+  summarise(Total_Events = n(), .groups = 'drop')
+
+# For each county, identify the event type with the maximum count
+most_common_event_by_county <- county_event_counts %>%
+  group_by(CZ_NAME) %>%
+  slice(which.max(Total_Events)) %>%
+  ungroup()
+
+# Load Texas county shapefile data - you'll need to have this data already or obtain it
+# You can usually find shapefiles for public use from the Census Bureau or state GIS departments
+tx_counties_shape <- st_read("path_to_texas_county_shapefile.shp")
+
+# Merge event data with the shapefile
+map_data_merged <- merge(tx_counties_shape, most_common_event_by_county, by.x = "NAME", by.y = "CZ_NAME")
+
+# Plot the map
+ggplot(data = map_data_merged) +
+  geom_sf(aes(fill = EVENT_TYPE)) +
+  labs(title = "Most Common Weather Event by County in Texas") +
+  theme_minimal()
+
+# Note: 'st_read' and 'geom_sf' functions are part of the 'sf' package, which is used for handling spatial data
+
+```
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(forecast)
+
+# Convert BEGIN_YEARMONTH to Date format
+df$BEGIN_DATE <- as.Date(paste0(df$BEGIN_YEARMONTH, "01"), format="%Y%m%d")
+
+# Create a time series from the data
+ts_data <- ts(table(df$BEGIN_DATE), frequency=12)
+
+# Fit ARIMA model with manual specification for seasonal differences
+fit <- auto.arima(ts_data, D=1)
+
+# Forecast next 24 months
+forecast_result <- forecast(fit, h=24)
+
+# Plot the time series and forecast
+p <- autoplot(ts_data) +
+  autolayer(forecast_result, series="Forecast") +
+  labs(title="Storm Forecast in 24 Months",
+       y="Number of Storms",
+       x="Months") +
+  theme_minimal()
+
+# Save the plot as PNG
+ggsave("storm_forecast_plot.png", p, width=12, height=6)
+```
+
