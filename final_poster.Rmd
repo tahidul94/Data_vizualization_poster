@@ -1,0 +1,612 @@
+---
+title: "data Processing and cleaning"
+output: html_document
+date: "2024-03-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r , echo=FALSE, warning=FALSE, message=FALSE}
+
+dataDrive <- "/Users/mdtahidulislam/Desktop/Data Visu/Data-for-poster/details"
+
+files <- list.files(path = dataDrive, pattern = "*.csv", full.names = TRUE)
+
+strome_df <- do.call(rbind, lapply(files, read.csv, stringsAsFactors = FALSE))
+  strome_df[strome_df == ''] <- NA
+```
+
+# Data Cleaning
+```{r}
+library(dplyr)
+library(ggplot2)
+library(scales)
+
+library(dplyr)
+library(stringr)
+library(dplyr)
+library(lubridate)
+
+
+strome_df$STATE <- tolower(strome_df$STATE)
+strome_df$BEGIN_YEAR <- substr(strome_df$BEGIN_YEARMONTH, 1, 4)
+strome_df$BEGIN_MONTH <- substr(strome_df$BEGIN_YEARMONTH, 5, 6)
+
+strome_df <- strome_df %>%
+  mutate(Event_category = case_when(
+    EVENT_TYPE %in% c('Thunderstorm Wind', 'Marine Thunderstorm Wind') ~ 'Thunderstorm Wind',
+    EVENT_TYPE %in% c('Hail', 'Marine Hail') ~ 'Hail',
+    EVENT_TYPE %in% c('High Wind', 'Marine High Wind') ~ 'High Wind',
+    TRUE ~ 'Other' # Default category for all other types
+  ))
+
+strome_df <- strome_df %>%
+  mutate(Season = case_when(
+    MONTH_NAME %in% c('December', 'January', 'February') ~ 'Winter',
+    MONTH_NAME %in% c('March', 'April', 'May') ~ 'Spring',
+    MONTH_NAME %in% c('June', 'July', 'August') ~ 'Summer',
+    MONTH_NAME %in% c('September', 'October', 'November') ~ 'Fall',
+    TRUE ~ NA_character_ # handles unexpected cases
+  ))
+
+strome_df <- strome_df %>%
+  mutate(census_region = case_when(
+    STATE %in% c('connecticut', 'maine', 'massachusetts', 'new hampshire', 'rhode island', 'vermont', 'new jersey', 'new york', 'pennsylvania') ~ 'Northeast',
+    STATE %in% c('illinois', 'indiana', 'michigan', 'ohio', 'wisconsin', 'iowa', 'kansas', 'minnesota', 'missouri', 'nebraska', 'north dakota', 'south dakota') ~ 'Midwest',
+    STATE %in% c('delaware', 'florida', 'georgia', 'maryland', 'north carolina', 'south carolina', 'virginia', 'west virginia', 'alabama', 'kentucky', 'mississippi', 'tennessee', 'arkansas', 'louisiana', 'oklahoma', 'texas') ~ 'South',
+    STATE %in% c('arizona', 'colorado', 'idaho', 'montana', 'nevada', 'new mexico', 'utah', 'wyoming', 'alaska', 'california', 'hawaii', 'oregon', 'washington') ~ 'West'
+  ))
+
+
+strome_df <- strome_df %>%
+  mutate(BEGIN_HOUR = format(dmy_hms(BEGIN_DATE_TIME), "%H:%M"))
+
+strome_df <- strome_df %>%
+  mutate(END_HOUR = format(dmy_hms(END_DATE_TIME), "%H:%M"))
+
+strome_df <- strome_df %>%
+  mutate(INJURIES_ALL = coalesce(INJURIES_DIRECT,0)+coalesce(INJURIES_INDIRECT,0))
+
+strome_df <- strome_df %>%
+  mutate(DEATHS_ALL = coalesce(DEATHS_DIRECT,0)+coalesce(DEATHS_INDIRECT,0))
+
+strome_df <- strome_df %>%
+  mutate(
+    DAMAGE_NUMERIC = gsub("[^0-9.KMkm]", "", DAMAGE_PROPERTY), # Clean DAMAGE_PROPERTY
+    DAMAGE_NUMERIC = tolower(DAMAGE_NUMERIC), # Convert to lower case
+    DAMAGE_NUMERIC = ifelse(grepl("^[km]$", DAMAGE_NUMERIC), NA, DAMAGE_NUMERIC), # Handle cases with only 'k' or 'm'
+    DAMAGE_NUMERIC = str_replace_all(DAMAGE_NUMERIC, "k", "e3"), # Replace 'K' with 'e3' (thousands)
+    DAMAGE_NUMERIC = str_replace_all(DAMAGE_NUMERIC, "m", "e6"), # Replace 'M' with 'e6' (millions)
+    DAMAGE_NUMERIC = as.numeric(DAMAGE_NUMERIC), # Convert to numeric
+
+    CROPS_NUMERIC = gsub("[^0-9.KMkm]", "", DAMAGE_CROPS), # Clean DAMAGE_CROPS
+    CROPS_NUMERIC = tolower(CROPS_NUMERIC), # Convert to lower case
+    CROPS_NUMERIC = ifelse(grepl("^[km]$", CROPS_NUMERIC), NA, CROPS_NUMERIC), # Handle cases with only 'k' or 'm'
+    CROPS_NUMERIC = str_replace_all(CROPS_NUMERIC, "k", "e3"), # Replace 'K' with 'e3'
+    CROPS_NUMERIC = str_replace_all(CROPS_NUMERIC, "m", "e6"), # Replace 'M' with 'e6'
+    CROPS_NUMERIC = as.numeric(CROPS_NUMERIC), # Convert to numeric
+
+    TOTAL_DAMAGE = ifelse(is.na(DAMAGE_NUMERIC), 0, DAMAGE_NUMERIC) + 
+                   ifelse(is.na(CROPS_NUMERIC), 0, CROPS_NUMERIC) # Sum of property and crop damages
+  ) %>%
+  select(-DAMAGE_NUMERIC, -CROPS_NUMERIC, # Remove the intermediate numeric columns
+         -EPISODE_ID, -EVENT_ID, -STATE_FIPS, -CZ_TYPE, -CZ_FIPS,
+         -WFO, -BEGIN_DATE_TIME, -END_DATE_TIME, -INJURIES_DIRECT, -INJURIES_INDIRECT,
+         -DEATHS_DIRECT, -DEATHS_INDIRECT, -DAMAGE_PROPERTY, -DAMAGE_CROPS, -SOURCE,
+         -MAGNITUDE_TYPE, -FLOOD_CAUSE, -CATEGORY, -TOR_F_SCALE, -TOR_LENGTH, -TOR_WIDTH,
+         -TOR_OTHER_WFO, -TOR_OTHER_CZ_STATE, -TOR_OTHER_CZ_FIPS, -TOR_OTHER_CZ_NAME,
+         -BEGIN_RANGE, -BEGIN_AZIMUTH, -BEGIN_LOCATION, -END_RANGE, -END_AZIMUTH, 
+         -END_LOCATION, -EPISODE_NARRATIVE, -EVENT_NARRATIVE, -DATA_SOURCE)
+
+
+
+
+aaa <- head(strome_df,100)
+write.csv(aaa, "ggg.csv", row.names=FALSE)
+
+
+texas_df <- strome_df %>% filter(STATE == "texas")
+#write.csv(strome_df, "texas_df.csv", row.names = FALSE)
+
+arima_df <- strome_df
+```
+
+```{r}
+#write.csv(strome_df, "strome_df_final.csv", row.names = FALSE)
+
+```
+
+#ARIMA modeling
+# download
+```{r}
+# Load necessary libraries
+library(tidyverse)
+library(lubridate)
+library(forecast)
+
+arima_df <- strome_df
+
+
+# Convert BEGIN_YEARMONTH to date
+arima_df$BEGIN_YEARMONTH <- as.Date(paste0(arima_df$BEGIN_YEARMONTH, "01"), format="%Y%m%d")
+
+# Filter data for events from 1996 onwards
+arima_df <- arima_df %>% filter(BEGIN_YEARMONTH >= as.Date("2013-01-01"))
+
+# Aggregate the number of events by month
+monthly_events <- arima_df %>%
+  group_by(BEGIN_YEARMONTH) %>%
+  summarise(Total_Events = n())
+
+# Convert to time series object
+ts_events <- ts(monthly_events$Total_Events, start = c(year(min(monthly_events$BEGIN_YEARMONTH)), month(min(monthly_events$BEGIN_YEARMONTH))), frequency = 12)
+
+# Fit ARIMA model
+fit <- auto.arima(ts_events)
+
+# Make predictions
+forecast_periods <- 24  # Number of months to forecast
+forecasts <- forecast(fit, h = forecast_periods)
+
+# Create a data frame for the forecasted period
+last_date <- max(monthly_events$BEGIN_YEARMONTH)
+forecast_dates <- seq(from = last_date %m+% months(1), by = "month", length.out = forecast_periods)
+forecast_df <- data.frame(BEGIN_YEARMONTH = forecast_dates, 
+                          Total_Events = NA, 
+                          Predicted = forecasts$mean, 
+                          Lo80 = forecasts$lower[,1], 
+                          Hi80 = forecasts$upper[,1], 
+                          Lo95 = forecasts$lower[,2], 
+                          Hi95 = forecasts$upper[,2])
+
+# Create a data frame for the fitted values
+fitted_df <- data.frame(BEGIN_YEARMONTH = monthly_events$BEGIN_YEARMONTH,
+                        Total_Events = monthly_events$Total_Events,
+                        Predicted = fit$fitted)
+
+# Combine observed and predicted values with the forecasted values
+combined_df <- bind_rows(fitted_df, forecast_df)
+
+a <- ggplot() +
+  geom_line(data = fitted_df, aes(x = BEGIN_YEARMONTH, y = Total_Events, color = "Observed"), size = 1) +
+  geom_line(data = combined_df, aes(x = BEGIN_YEARMONTH, y = Predicted, color = "Predicted"), size = 1) +
+  geom_ribbon(data = forecast_df, aes(x = BEGIN_YEARMONTH, ymin = Lo80, ymax = Hi80), fill = "red", alpha = 0.2) +
+  geom_ribbon(data = forecast_df, aes(x = BEGIN_YEARMONTH, ymin = Lo95, ymax = Hi95), fill = "red", alpha = 0.1) +
+  labs(title = "Fitted Model vs. Actual Total Storm Events", x = "Month", y = "Total Events") +
+  theme_minimal(base_size = 15) +
+  scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
+  scale_color_manual(values = c("Observed" = "black", "Predicted" = "red")) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14),
+    panel.grid.major = element_line(color = "gray", size = 0.5),
+    panel.grid.minor = element_line(color = "gray", size = 0.25)
+  ) +
+  guides(color = guide_legend(title = "Legend", title.position = "top", title.hjust = 0.5))
+
+# Save the plot as a high-resolution PNG
+ggsave("observed_vs_predicted_total_events.png", plot = a, width = 12, height = 6, dpi = 300)
+
+# Display the plot
+print(a)
+
+```
+
+
+
+
+
+
+
+
+#Texas
+
+#good for poster texas
+```{r}
+# Remove rows with missing coordinates
+texas_df <- texas_df %>% filter(!is.na(BEGIN_LON) & !is.na(BEGIN_LAT))
+
+# Aggregate the data by county
+texas_county_events <- texas_df %>%
+  group_by(CZ_NAME) %>%
+  summarise(Event_count = n())
+
+# Get the shapefile for Texas counties
+texas_counties <- tigris::counties(state = "TX", cb = TRUE)
+
+# Convert county names to uppercase to ensure matching
+texas_county_events$CZ_NAME <- toupper(texas_county_events$CZ_NAME)
+texas_counties$NAME <- toupper(texas_counties$NAME)
+
+# Merge the aggregated data with the shapefile
+texas_counties <- texas_counties %>%
+  left_join(texas_county_events, by = c("NAME" = "CZ_NAME"))
+
+# Replace NA event counts with the color for the lowest category
+texas_counties$Event_count[is.na(texas_counties$Event_count)] <- 0
+
+# Define custom breaks and labels for the legend
+breaks <- c(0, 50, 100, 500, max(texas_counties$Event_count))
+labels <- c("0-50", "51-100", "101-500", "501+")
+
+# Custom color palette with four distinguishable colors from ColorBrewer Set1
+colors <- c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728")
+
+# Plot the map with improved aesthetics and a more beautiful legend
+b <- ggplot(data = texas_counties) +
+  geom_sf(aes(fill = cut(Event_count, breaks = breaks, labels = labels, include.lowest = TRUE)), color = "white", size = 0.2) +
+  scale_fill_manual(name = "Event Count",
+                    values = colors,
+                    na.value = colors[1],  # Fill NA values with the color for the lowest category
+                    labels = labels,
+                    drop = FALSE) +
+  guides(fill = guide_legend(override.aes = list(shape = 21, size = 5, fill = colors, color = "black"), 
+                             keywidth = 1, keyheight = 1, 
+                             nrow = 1, byrow = TRUE, 
+                             label.position = "bottom", 
+                             title.position = "top",
+                             title.hjust = 0.5,
+                             label.hjust = 0.5)) +  # Circle legend
+  theme_minimal(base_size = 15) +
+  theme(
+    legend.position = "bottom",
+    legend.key = element_rect(size = 1),
+    legend.key.width = unit(1, "cm"),
+    legend.key.height = unit(1, "cm"),
+    legend.title = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12),
+    legend.background = element_rect(fill = alpha("white", 0.8), color = "black", size = 0.5, linetype = "solid"),
+    plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 16),
+    plot.caption = element_text(hjust = 1, size = 10),
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank()
+  )
+b
+ggsave("fit2.png", plot = a, width = 12, height = 6, dpi = 1200)
+```
+
+# Texas ARIMA
+
+```{r}
+# Load the necessary libraries
+library(tidyverse)
+library(lubridate)
+library(forecast)
+library(tseries)
+library(ggplot2)
+
+# Assuming strome_df is your dataframe
+# Filter the data to include only events in Texas and from 2013 onwards
+texas_events <- strome_df %>%
+  filter(STATE == "texas", YEAR >= 2013) %>%
+  mutate(BEGIN_DATE = ymd(paste(YEAR, BEGIN_MONTH, "01", sep = "-")))
+
+# Aggregate data by month (count the number of events)
+monthly_event_counts <- texas_events %>%
+  group_by(BEGIN_DATE) %>%
+  summarise(EVENT_COUNT = n())
+
+# Convert the data to a time series object
+monthly_ts <- ts(monthly_event_counts$EVENT_COUNT, start = c(year(min(monthly_event_counts$BEGIN_DATE)), month(min(monthly_event_counts$BEGIN_DATE))), frequency = 12)
+
+# Fit the ARIMA model to the entire dataset
+arima_model <- auto.arima(monthly_ts)
+
+# Forecast the future values (e.g., for the next 12 months)
+forecasts <- forecast(arima_model, h = 12)
+
+# Convert the forecast object to a dataframe
+forecast_df <- data.frame(
+  Date = seq(as.Date("2023-12-01"), by = "month", length.out = 12),
+  Point_Forecast = as.numeric(forecasts$mean),
+  Lo_80 = as.numeric(forecasts$lower[,1]),
+  Hi_80 = as.numeric(forecasts$upper[,1]),
+  Lo_95 = as.numeric(forecasts$lower[,2]),
+  Hi_95 = as.numeric(forecasts$upper[,2])
+)
+
+# Create the plot with ggplot2
+p <- ggplot() +
+  geom_line(data = monthly_event_counts, aes(x = BEGIN_DATE, y = EVENT_COUNT, color = "Historical Data"), size = 0.5) +
+  geom_line(data = forecast_df, aes(x = Date, y = Point_Forecast, color = "Forecast"), size = 0.5) +
+  geom_ribbon(data = forecast_df, aes(x = Date, ymin = Lo_80, ymax = Hi_80), fill = "lightblue", alpha = 0.5, show.legend = FALSE) +
+  geom_ribbon(data = forecast_df, aes(x = Date, ymin = Lo_95, ymax = Hi_95), fill = "lightgray", alpha = 0.3, show.legend = FALSE) +
+  labs(title = "Forcasted Event Counts in Texas Using ARIMA",
+       y = "Number of Strom Events",
+       x = "Year",
+       color = "Legend") +
+  theme_bw() +  # Use theme_bw for a clean look with a box
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank(),  # Remove minor grid lines
+    legend.position = "bottom",
+    legend.title = element_blank()
+  ) +
+  scale_color_manual(values = c("Historical Data" = "black", "Forecast" = "blue")) +
+  scale_x_date(breaks = seq(as.Date("2015-01-01"), as.Date("2025-01-01"), by = "2 years"), date_labels = "%Y") +
+  guides(color = guide_legend(override.aes = list(linetype = c(1, 1), size = 1.5)))
+
+# Save the plot as a PNG file
+ggsave("pp.png", plot = p, width = 12, height = 6, dpi = 1200)
+p
+```
+
+# US MAP by region and event
+
+#Best one
+```{r}
+# Define the list of valid U.S. state names
+real_state <- c('connecticut', 'maine', 'massachusetts', 'new hampshire', 'rhode island', 'vermont', 
+                'new jersey', 'new york', 'pennsylvania', 'illinois', 'indiana', 'michigan', 'ohio', 
+                'wisconsin', 'iowa', 'kansas', 'minnesota', 'missouri', 'nebraska', 'north dakota', 
+                'south dakota', 'delaware', 'florida', 'georgia', 'maryland', 'north carolina', 
+                'south carolina', 'virginia', 'west virginia', 'alabama', 'kentucky', 'mississippi', 
+                'tennessee', 'arkansas', 'louisiana', 'oklahoma', 'texas', 'arizona', 'colorado', 
+                'idaho', 'montana', 'nevada', 'new mexico', 'utah', 'wyoming', 'alaska', 'california', 
+                'hawaii', 'oregon', 'washington')
+
+# Filter strome_df to include only valid state names
+filtered_strome_df <- strome_df %>%
+  filter(tolower(STATE) %in% real_state)
+
+# Determine the most common event type for each state
+most_common_event <- filtered_strome_df %>%
+  filter(!is.na(STATE)) %>%
+  group_by(STATE, EVENT_TYPE) %>%
+  summarise(Count = n()) %>%
+  arrange(STATE, desc(Count)) %>%
+  slice(1) %>%
+  ungroup()
+
+# Count the number of times each event type appears as the most common event type
+event_type_counts <- most_common_event %>%
+  count(EVENT_TYPE)
+
+# Identify event types that appear more than once
+frequent_event_types <- event_type_counts %>%
+  filter(n > 1) %>%
+  pull(EVENT_TYPE)
+
+# Label event types that occur only once as "Other"
+most_common_event <- most_common_event %>%
+  mutate(EVENT_TYPE = ifelse(EVENT_TYPE %in% frequent_event_types, EVENT_TYPE, "Other"))
+
+# Ensure state names match
+state_names <- data.frame(
+  STATE = tolower(state.name),
+  region = tolower(state.name)
+)
+
+# Merge the most common event data with state names
+most_common_event <- most_common_event %>%
+  mutate(STATE = tolower(STATE)) %>%
+  left_join(state_names, by = c("STATE" = "STATE"))
+
+# Remove NA values from the merged data
+most_common_event <- most_common_event %>%
+  filter(!is.na(EVENT_TYPE))
+
+# Print the merged most common event data
+print(most_common_event, n = nrow(most_common_event))
+
+# Load US map data
+us_states <- map_data("state")
+
+# Merge the most common event data with US map data
+us_states <- us_states %>%
+  left_join(most_common_event, by = c("region" = "region"))
+
+# Print the merged US map data
+print(head(us_states))
+
+# Customize the legend and plot the data
+ggplot(data = us_states, aes(x = long, y = lat, group = group, fill = EVENT_TYPE)) +
+  geom_polygon(color = "black") +
+  scale_fill_manual(values = c("Hail" = "#ff6f61", "High Wind" = "#6b5b95", "Thunderstorm Wind" = "#88b04b",
+                               "Heavy Snow" = "#ffcc5c", "Other" = "#f7cac9"),
+                    na.value = NA, drop = FALSE) +
+  labs(title = "Most Common Event Type by State",
+       fill = "Event Type") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10))
+```
+
+# Table for top five state by season
+
+```{r}
+# Filter strome_df to include only valid state names
+filtered_strome_df <- strome_df %>%
+  filter(tolower(STATE) %in% real_state)
+
+# Function to get top 5 states for a given season
+get_top_states_by_season <- function(season_data) {
+  season_data %>%
+    group_by(STATE) %>%
+    summarise(Event_Count = n()) %>%
+    arrange(desc(Event_Count)) %>%
+    slice(1:5) %>%
+    mutate(Rank = row_number())
+}
+
+# List of seasons
+seasons <- unique(filtered_strome_df$Season)
+
+# Initialize an empty list to store results
+top_states_by_season <- list()
+
+# Loop through each season and get the top 5 states
+for (season in seasons) {
+  season_data <- filtered_strome_df %>%
+    filter(Season == season)
+  
+  top_states <- get_top_states_by_season(season_data) %>%
+    mutate(Season = season)
+  
+  top_states_by_season[[season]] <- top_states
+}
+
+# Combine the results into a single data frame
+top_states_combined <- bind_rows(top_states_by_season)
+
+# Pivot the data to get the desired format
+top_states_table <- top_states_combined %>%
+  select(STATE, Rank, Season) %>%
+  pivot_wider(names_from = Season, values_from = STATE) %>%
+  arrange(Rank) %>%
+  select(-Rank)
+
+# Print the table
+print(top_states_table)
+```
+
+
+# Damage by year
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(scales)
+# Aggregate the data to calculate total damage by year
+total_damage_by_year <- strome_df %>%
+  group_by(YEAR) %>%
+  summarise(Total_Damage = sum(TOTAL_DAMAGE, na.rm = TRUE))
+
+# Print the aggregated data
+print(total_damage_by_year)
+
+# Create a line plot
+ggplot(total_damage_by_year, aes(x = YEAR, y = Total_Damage)) +
+  geom_line(color = "blue", size = 1) +
+  geom_point(color = "red", size = 2) +
+  labs(title = "Total Damage by Year",
+       x = "Year",
+       y = "Total Damage (Billions)") +
+  scale_y_continuous(labels = scales::number_format(scale = 1e-9, accuracy = 1)) +
+  theme_minimal()
+
+```
+
+
+```{r}
+# Create a line plot
+d <- ggplot(total_damage_by_year, aes(x = YEAR, y = Total_Damage)) +
+  geom_line(color = "blue", size = 1) +
+  geom_point(color = "red", size = 2) +
+  labs(title = "Total Damage by Year",
+       x = "Year",
+       y = "Total Damage (Billions)") +
+  scale_y_continuous(labels = scales::number_format(scale = 1e-9,accuracy = 1)) +
+  theme_classic() +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    axis.ticks = element_line(color = "black"),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    plot.title = element_text(size = 16, hjust = 0.5)
+  )
+d
+ggsave("damage.png", plot = d, width = 12, height = 6, dpi = 1200)
+```
+
+
+
+# polar plot
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+
+# Assuming strome_df contains the original data
+# Filter Tornado events from 2013 to present
+tornado_df <- strome_df %>% 
+  filter(EVENT_TYPE == "Tornado" & YEAR >= 2013)
+
+# Extract the hour part from BEGIN_HOUR
+tornado_df <- tornado_df %>% 
+  mutate(BEGIN_HOUR = substr(BEGIN_HOUR, 1, 2))
+
+# Count the number of Tornado events by hour
+hourly_tornado_count <- tornado_df %>% 
+  group_by(BEGIN_HOUR) %>% 
+  summarise(Tornado_Count = n()) %>% 
+  arrange(BEGIN_HOUR)
+
+# Create a new column for AM/PM distinction and 12-hour format
+hourly_tornado_count <- hourly_tornado_count %>%
+  mutate(
+    AM_PM = ifelse(as.numeric(BEGIN_HOUR) < 12, "AM", "PM"),
+    HOUR_12 = as.numeric(BEGIN_HOUR) %% 12,
+    HOUR_12 = ifelse(HOUR_12 == 0, 12, HOUR_12),
+    BEGIN_HOUR_LABEL = paste0(HOUR_12, ":00"),
+    Line_Type = ifelse(AM_PM == "AM", "dashed", "solid")
+  )
+
+# Define a vibrant color gradient for the fill
+fill_gradient <- scale_fill_gradient(low = "#f7cac9", high = "#6b5b95", guide = "colorbar", aesthetics = "fill")
+
+# Plot the data
+q <- ggplot(hourly_tornado_count, aes(x = factor(HOUR_12, levels = 1:12), y = Tornado_Count, fill = Tornado_Count, linetype = Line_Type)) +
+  geom_bar(stat = "identity", width = 1, color = "black") +
+  fill_gradient +
+  scale_linetype_manual(values = c("solid", "dashed"), guide = guide_legend(title = "Line Type", title.position = "top", title.hjust = 0.5)) +
+  coord_polar(start = 0) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 14, face = "bold", color = "black"),
+    axis.title = element_blank(),
+    panel.grid = element_line(color = "gray", linetype = "dotted"),
+    plot.title = element_text(size = 20, face = "bold"),
+    plot.subtitle = element_text(size = 14),
+    legend.position = "bottom",
+    legend.title = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12),
+    legend.box = "horizontal"
+  ) +
+  labs(
+    fill = "Tornado Count",
+    title = "Tornado Counts by Hour (2013-Present)",
+    subtitle = "Dashed lines for AM hours, Solid lines for PM hours"
+  ) +
+  scale_x_discrete(labels = hourly_tornado_count$BEGIN_HOUR_LABEL) +
+  guides(fill = guide_colorbar(
+    title.position = "top",
+    title.hjust = 0.5,
+    barwidth = 15,
+    barheight = 1,
+    title.theme = element_text(size = 14, face = "bold"),
+    label.theme = element_text(size = 12)
+  ))
+q
+
+ggsave("tornado_time1.png", plot = q, width = 6, height = 6, dpi = 1200)
+```
+
+```{r}
+filtered_df <- strome_df %>%
+  filter(STATE == "texas",
+         BEGIN_YEAR >= 2022,
+         EVENT_TYPE %in% c("Drought", "Hail", "Thunderstorm Wind", "Heat", "Excessive Heat", "High Wind", "Flash Flood"))
+
+# Select specific columns for the leaflet map
+leaflet_data <- filtered_df %>%
+  select(EVENT_TYPE, MONTH_NAME, BEGIN_LAT, BEGIN_LON, END_LAT, END_LON)
+
+# Write the filtered data to a new CSV file
+#write.csv(leaflet_data, "leaflet_data.csv", row.names = FALSE)
+
+```
+
